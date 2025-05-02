@@ -3,6 +3,7 @@ import authRoutes from '../routes/auth.routes';
 import { routeNotFoundHandler, globalErrorHandler } from '../middlewares/routesErrorHandler';
 import { sendSuccess } from '../middlewares/httpResponses';
 import { formatDate } from '../utils/date';
+import recipesRoutes from '../routes/recipes.routes';
 
 export const setupRoutes = (app: Application) => {
 
@@ -16,6 +17,7 @@ export const setupRoutes = (app: Application) => {
 
   // API routes
   app.use('/api/auth', authRoutes);
+  app.use('/api/recipes', recipesRoutes);
   // ...
 
   // Errors handling middlewares
