@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { login, register } from '../controllers/auth.controller';
-import { authSchema } from '../validators/auth.schema';
+import {getMe, login, register} from '../controllers/auth.controller';
 import { validateFields } from '../middlewares/fieldsValidation';
+import {checkToken} from '../middlewares/checkToken';
+import {loginSchema, registerSchema} from '../validators/auth.schema';
 
 const router = Router();
 
@@ -42,7 +43,7 @@ const router = Router();
  */
 router.post(
   '/login',
-  validateFields(authSchema),
+  validateFields(loginSchema),
   login
 );
 
@@ -83,8 +84,13 @@ router.post(
  */
 router.post(
   '/register',
-  validateFields(authSchema),
+  validateFields(registerSchema),
   register
+);
+router.get(
+    '/me',
+    checkToken(),
+    getMe
 );
 
 export default router;
