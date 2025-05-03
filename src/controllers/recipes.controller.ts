@@ -2,10 +2,6 @@ import {Request, Response} from 'express';
 import {supabase} from '../config/supabase';
 import {sendError, sendSuccess} from '../middlewares/httpResponses';
 import {openai} from '../config/openai';
-import {Recipe} from "../types/recipes";
-import {util} from "zod";
-import jsonStringifyReplacer = util.jsonStringifyReplacer;
-
 
 export const getRecipes = async (req: Request, res: Response) => {
     try {
@@ -131,6 +127,8 @@ export const suppFromFavorites = async (req: Request, res: Response) => {
     }
 };
 
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const generateRecipe = async (req: Request, res: Response) => {
     const {ingredients} = req.body;
 
@@ -150,6 +148,7 @@ export const generateRecipe = async (req: Request, res: Response) => {
     (async () => callDeepSeek(ingredients))();
 
 };
+
 
 const callDeepSeek = async (ingredients: string[]) => {
     try {
@@ -193,9 +192,7 @@ Available ingredients: ${ingredients}`
         });
 
         const rawContent = completion.choices?.[0]?.message?.content || '';
-
-        const jsonMatch = rawContent.match(/{[\s\S]*}/); // match tout ce qui commence et finit par { ... }
-
+        const jsonMatch = rawContent.match(/{[\s\S]*}/);
 
         let recipe;
         try {
@@ -204,6 +201,7 @@ Available ingredients: ${ingredients}`
             }
         } catch (error) {
             console.error('Erreur parsing JSON:', error);
+            return;
         }
 
         if (!recipe.title || !recipe.ingredients || !recipe.steps || !recipe.nutrition) {
@@ -211,7 +209,7 @@ Available ingredients: ${ingredients}`
             return;
         }
 
-        const {data, error: insertError} = await supabase
+        const { data, error: insertError } = await supabase
             .from('recipes')
             .insert({
                 title: recipe.title,
@@ -231,9 +229,11 @@ Available ingredients: ${ingredients}`
         }
 
         const inserted = data[0];
+        await callPixabay(recipe.title, inserted.id);
 
-        (async () => callPixabay(recipe.title, inserted.id))();
-
+        // 💤 Laisse du temps au process avant que Vercel coupe
+        await sleep(3000); // 3 secondes
+        console.log('Sleep terminé — callDeepSeek complet.');
     } catch (err) {
         console.error('Erreur async DeepSeek:', err);
     }
