@@ -41,6 +41,8 @@ export const register = async (req: Request, res: Response) => {
             },
             session: {
                 access_token: data.session?.access_token,
+                refresh_token: data.session?.refresh_token,
+                expires_at: data.session?.expires_at,
             }
         });
     } catch (error) {
@@ -70,6 +72,8 @@ export const login = async (req: Request, res: Response) => {
             },
             session: {
                 access_token: data.session?.access_token,
+                refresh_token: data.session?.refresh_token,
+                expires_at: data.session?.expires_at,
             }
         });
     } catch (error) {
@@ -118,4 +122,29 @@ export const getMe = async (req: Request, res: Response) => {
     } catch (error) {
         return sendError(res, 500, `Failed to retrieve user: ${error}`);
     }
+};
+export const refreshToken = async (req: Request, res: Response) => {
+    const { refresh_token } = req.body;
+
+    if (!refresh_token) {
+        return sendError(res, 400, 'Missing refresh token');
+    }
+
+    const { data, error } = await supabase.auth.refreshSession({ refresh_token });
+
+    if (error || !data.session) {
+        return sendError(res, 401, 'Invalid refresh token or session expired');
+    }
+
+    return sendSuccess(res, 200, 'Token refreshed successfully', {
+        user: {
+            id: data.user?.id,
+            email: data.user?.email,
+        },
+        session: {
+            access_token: data.session?.access_token,
+            refresh_token: data.session?.refresh_token,
+            expires_at: data.session?.expires_at,
+        }
+    });
 };
