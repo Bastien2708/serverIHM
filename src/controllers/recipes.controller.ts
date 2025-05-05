@@ -126,32 +126,19 @@ export const suppFromFavorites = async (req: Request, res: Response) => {
         return sendError(res, 500, `Erreur serveur : ${error}`);
     }
 };
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
 export const generateRecipe = async (req: Request, res: Response) => {
-    const {ingredients} = req.body;
+    const { ingredients } = req.body;
 
-    // 1. Authentification utilisateur
     const authHeader = req.headers.authorization;
     if (!authHeader) return sendError(res, 401, 'Missing authorization header');
-
     const token = authHeader.split(' ')[1];
     if (!token) return sendError(res, 401, 'Missing token');
 
-    const {data: {user}, error: userError} = await supabase.auth.getUser(token);
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) return sendError(res, 401, 'Invalid token');
 
-    // 2. Réponse immédiate au client
-    sendSuccess(res, 202, 'Recipe generation started', {});
-
-    (async () => callDeepSeek(ingredients))();
-
-};
-
-
-const callDeepSeek = async (ingredients: string[]) => {
     try {
+        // Appel à l'IA
         const completion = await openai.chat.completions.create({
             model: 'deepseek/deepseek-prover-v2:free',
             messages: [
@@ -194,21 +181,20 @@ Available ingredients: ${ingredients}`
         const rawContent = completion.choices?.[0]?.message?.content || '';
         const jsonMatch = rawContent.match(/{[\s\S]*}/);
 
+        if (!jsonMatch) return sendError(res, 500, 'Failed to extract JSON from AI response');
+
         let recipe;
         try {
-            if (jsonMatch) {
-                recipe = JSON.parse(jsonMatch[0]);
-            }
-        } catch (error) {
-            console.error('Erreur parsing JSON:', error);
-            return;
+            recipe = JSON.parse(jsonMatch[0]);
+        } catch (err) {
+            return sendError(res, 500, 'Erreur parsing JSON : ' + err);
         }
 
-        if (!recipe.title || !recipe.ingredients || !recipe.steps || !recipe.nutrition) {
-            console.error('Recipe incomplete, skipping insert.');
-            return;
+        if (!recipe || !recipe.title || !recipe.ingredients || !recipe.steps || !recipe.nutrition) {
+            return sendError(res, 400, 'Recette générée invalide ou incomplète');
         }
 
+        // Insertion en base
         const { data, error: insertError } = await supabase
             .from('recipes')
             .insert({
@@ -223,55 +209,39 @@ Available ingredients: ${ingredients}`
             })
             .select();
 
-        if (insertError || !data || data.length === 0) {
-            console.error('Erreur enregistrement recette :', insertError?.message);
-            return;
+        if (insertError || !data?.[0]) {
+            return sendError(res, 500, 'Erreur enregistrement recette : ' + insertError?.message);
         }
 
         const inserted = data[0];
-        await callPixabay(recipe.title, inserted.id);
 
-        // 💤 Laisse du temps au process avant que Vercel coupe
-        await sleep(3000); // 3 secondes
-        console.log('Sleep terminé — callDeepSeek complet.');
-    } catch (err) {
-        console.error('Erreur async DeepSeek:', err);
-    }
-};
-
-const callPixabay = async (title: string, id: string) => {
-    try {
+        // Appel à Pexels pour image
+        const searchQuery = `${recipe.title} ${ingredients}`;
         const params = new URLSearchParams({
-            query: title
+            query: searchQuery,
+            per_page: '1',
         });
 
-        const response = await fetch(`https://api.pexels.com/v1/search?${params.toString()}`, {
+        const imageRes = await fetch(`https://api.pexels.com/v1/search?${params.toString()}`, {
             method: 'GET',
             headers: {
                 Authorization: process.env.PEXELS_API_KEY || '',
                 'Content-Type': 'application/json',
             },
         });
-        if (!response.ok) {
-            console.error('Erreur lors de l’appel à Pixabay:', response.statusText);
-            return;
-        }
 
-        const data = await response.json();
-        const imageUrl = data.photos[0].src.original;
+        const imageData = await imageRes.json();
+        const imageUrl = imageData.photos?.[0]?.src?.original || 'https://via.placeholder.com/600x400?text=No+Image';
 
-        // Mettre à jour la recette dans Supabase
-        const {error: updateError} = await supabase
+        await supabase
             .from('recipes')
-            .update({image_url: imageUrl})
-            .eq('id', id);
+            .update({ image_url: imageUrl })
+            .eq('id', inserted.id);
 
-        if (updateError) {
-            console.error('Erreur mise à jour image_url :', updateError.message);
-        } else {
-            console.log('Image ajoutée à la recette', id);
-        }
-    } catch (err) {
-        console.error('Erreur fetch Pixabay:', err);
+        return sendSuccess(res, 201, 'Recette générée et enregistrée avec succès', { id: inserted.id });
+
+    } catch (error) {
+        console.error('Erreur complète :', error);
+        return sendError(res, 500, 'Erreur serveur lors de la génération de la recette');
     }
 };
