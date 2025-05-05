@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import {getMe, login, register} from '../controllers/auth.controller';
+import {getMe, login, refreshToken, register} from '../controllers/auth.controller';
 import { validateFields } from '../middlewares/fieldsValidation';
 import {checkToken} from '../middlewares/checkToken';
 import {loginSchema, registerSchema} from '../validators/auth.schema';
@@ -91,6 +91,11 @@ router.get(
     '/me',
     checkToken(),
     getMe
+);
+router.post(
+    '/refresh-token',
+    checkToken(),
+    refreshToken
 );
 
 export default router;
