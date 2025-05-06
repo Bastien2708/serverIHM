@@ -80,7 +80,7 @@ export const generateRecipeWithRetry = async (ingredients: string, maxRetries = 
   for ( let attempt = 1; attempt <= maxRetries; attempt++ ) {
     try {
       const completion = await openai.chat.completions.create({
-        model: 'deepseek/deepseek-prover-v2:free',
+        model: 'microsoft/phi-3-medium-128k-instruct',
         messages: [
           {
             role: 'user',
