@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { checkMinRole } from '../middlewares/checkMinRole';
-import { getUserById, getUsers } from '../controllers/users.controller';
+import { deleteUserById, getUserById, getUsers, updateUserById } from '../controllers/users.controller';
+import { validateFields } from '../middlewares/fieldsValidation';
+import { updateUserSchema } from '../validators/users.schema';
 
 const router = Router();
 
@@ -14,7 +16,7 @@ router.get(
   '/:id',
   getUserById
 );
-/*
+
 router.patch(
   '/:id',
   checkMinRole('user'),
@@ -26,6 +28,6 @@ router.delete(
   '/:id',
   checkMinRole('admin'),
   deleteUserById
-);*/
+);
 
 export default router;
