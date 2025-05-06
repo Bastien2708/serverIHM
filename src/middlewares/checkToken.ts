@@ -23,6 +23,7 @@ export const checkToken = () => {
       // If everything is fine, call the next middleware and attach the user to the request
       req.user = user;
       next();
+
     } catch ( error ) {
       return sendError(res, 500, `Error checking user token : ${error}`);
     }
