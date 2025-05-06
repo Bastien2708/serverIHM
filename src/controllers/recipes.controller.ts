@@ -99,6 +99,7 @@ export const generateRecipe = async (req: Request, res: Response) => {
         carbs: recipe.carbs,
         protein: recipe.protein,
         fat: recipe.fat,
+        user_id: user.id
       })
       .select()
       .single();
@@ -118,10 +119,8 @@ export const generateRecipe = async (req: Request, res: Response) => {
       .eq('id', insertedRecipe.id);
 
     return sendSuccess(res, 201, 'Recipe generated and saved successfully', {
-      recipe: {
-        ...insertedRecipe,
-        image_url: imageUrl,
-      },
+      ...insertedRecipe,
+      image_url: imageUrl,
     });
   } catch ( error ) {
     console.error('💥 Unexpected error:', error);
