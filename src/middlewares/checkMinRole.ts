@@ -27,7 +27,7 @@ export const checkMinRole = (minRole: keyof typeof rolePriority) => {
       const userLevel = rolePriority[userRole];
       const requiredLevel = rolePriority[minRole];
 
-      if ( userLevel < requiredLevel ) return sendError(res, 403, 'Access denied: insufficient role');
+      if ( userLevel < requiredLevel ) return sendError(res, 403, 'Access denied: you do not have the required role');
 
       req.user = {
         ...user,
