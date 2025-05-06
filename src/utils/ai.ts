@@ -1,20 +1,20 @@
 import { openai } from '../config/openai';
-
+import { recipeSchema } from '../validators/recipes.schema';
 
 export const parseAIRecipeJSON = (raw: string) => {
   const jsonMatch = raw.match(/{[\s\S]*}/);
   if ( !jsonMatch ) return null;
 
   try {
-    const parsed = JSON.parse(jsonMatch[0]);
-    if (
-      typeof parsed.title !== 'string' ||
-      !Array.isArray(parsed.ingredients) ||
-      !Array.isArray(parsed.steps) ||
-      typeof parsed.nutrition !== 'object'
-    ) return null;
+    const json = JSON.parse(jsonMatch[0]);
+    const result = recipeSchema.safeParse(json);
 
-    return parsed;
+    if ( !result.success ) {
+      console.warn('Invalid recipe format:', result.error.format());
+      return null;
+    }
+
+    return result.data;
   } catch {
     return null;
   }
@@ -46,16 +46,16 @@ export const fetchImageForRecipe = async (query: string): Promise<string> => {
 export const aiPrompt = `
 You are a professional chef and certified nutritionist.
 
-Your task is to generate one complete, creative, and healthy recipe using **only** the ingredients listed below.  
-⚠️ You are absolutely forbidden from inventing, assuming, or including any ingredients that are not strictly listed.  
-Do **not** use salt, pepper, oil, spices, or water unless they are explicitly included in the list.
+Your task is to generate one complete, creative, and healthy recipe using only the ingredients listed below.
 
-You must return a **valid JSON object only**, with no extra text, no explanation, and no formatting outside of JSON.  
-⚠️ If your response includes anything outside of the JSON (e.g. comments, Markdown, prose), it will be considered invalid.
+❗ You are absolutely forbidden from inventing or assuming any ingredients not listed.
+❗ You must exclude any invalid, non-edible, or irrelevant items from the list, such as packaging materials, categories, or tools.
+❗ If any listed item is not a real ingredient or is not edible, you must ignore it completely.
 
-You do not need to use all the ingredients, but you are forbidden from using any that are not listed.
+You do not have to use all the ingredients, but you must use only valid, edible ones from the provided list.
 
-The recipe must be complete and realistic.
+⚠️ You must return a valid **JSON object only**, with no extra text, no Markdown, and no explanations.
+⚠️ If your response includes anything other than valid JSON, it will be rejected.
 
 Here is the required JSON structure:
 
@@ -64,18 +64,16 @@ Here is the required JSON structure:
   "description": "A short, enticing description of the dish.",
   "ingredients": ["ingredient 1 with quantity", "ingredient 2 with quantity", "..."],
   "steps": ["Step 1", "Step 2", "..."],
-  "nutrition": {
-    "kcal": number,
-    "carbs": number,
-    "protein": number,
-    "fat": number
-  }
+  "kcal": number,
+  "carbs": number,
+  "protein": number,
+  "fat": number
 }
 
-All units must be in metric (g, ml, etc.). Nutrition values are in kcal and grams.  
-All fields must be in English.
+All units must be in metric (g, ml, etc.). Nutrition values must be realistic (kcal and grams).
+All fields must be written in English.
 
-Available ingredients: `;
+Available ingredients (use only valid, edible items from this list): `;
 
 
 export const generateRecipeWithRetry = async (ingredients: string, maxRetries = 3, delayMs = 500) => {

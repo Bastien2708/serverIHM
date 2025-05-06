@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { getMe, login, refreshToken, register } from '../controllers/auth.controller';
+import { me, login, refreshToken, register } from '../controllers/auth.controller';
 import { validateFields } from '../middlewares/fieldsValidation';
-import { checkToken } from '../middlewares/checkToken';
 import { loginSchema, refreshTokenSchema, registerSchema } from '../validators/auth.schema';
+import { checkMinRole } from '../middlewares/checkMinRole';
 
 const router = Router();
 
@@ -103,8 +103,8 @@ router.post(
  */
 router.get(
   '/me',
-  checkToken(),
-  getMe
+  checkMinRole('user'),
+  me
 );
 
 /**

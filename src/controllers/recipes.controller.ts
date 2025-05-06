@@ -95,10 +95,10 @@ export const generateRecipe = async (req: Request, res: Response) => {
         description: recipe.description,
         ingredients: recipe.ingredients,
         steps: recipe.steps,
-        kcal: recipe.nutrition.kcal,
-        carbs: recipe.nutrition.carbs,
-        protein: recipe.nutrition.protein,
-        fat: recipe.nutrition.fat,
+        kcal: recipe.kcal,
+        carbs: recipe.carbs,
+        protein: recipe.protein,
+        fat: recipe.fat,
       })
       .select()
       .single();

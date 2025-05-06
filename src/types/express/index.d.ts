@@ -1,8 +1,8 @@
 import 'express';
-import type { User } from '@supabase/supabase-js';
+import { AuthenticatedUser } from '../role';
 
 declare module 'express' {
   interface Request {
-    user?: User;
+    user?: AuthenticatedUser;
   }
 }
