@@ -1,5 +1,12 @@
+import { log } from '../config/logger';
 import { openai } from '../config/openai';
 import { recipeSchema } from '../validators/recipes.schema';
+
+const AI_MODELS = [
+  'gpt-3.5-turbo',
+  'microsoft/phi-3-medium-128k-instruct',
+  'deepseek/deepseek-prover-v2:free',
+] as const;
 
 export const parseAIRecipeJSON = (raw: string) => {
   const jsonMatch = raw.match(/{[\s\S]*}/);
@@ -10,7 +17,7 @@ export const parseAIRecipeJSON = (raw: string) => {
     const result = recipeSchema.safeParse(json);
 
     if ( !result.success ) {
-      console.warn('Invalid recipe format:', result.error.format());
+      log.warn('Invalid recipe format:', result.error.format());
       return null;
     }
 
@@ -38,7 +45,7 @@ export const fetchImageForRecipe = async (query: string): Promise<string> => {
     const imageData = await response.json();
     return imageData.photos?.[0]?.src?.original || 'https://via.placeholder.com/600x400?text=No+Image';
   } catch ( err ) {
-    console.error('Image fetch error:', err);
+    log.error('Image fetch error:', err);
     return 'https://via.placeholder.com/600x400?text=No+Image';
   }
 };
@@ -76,32 +83,43 @@ All fields must be written in English.
 Available ingredients (use only valid, edible items from this list): `;
 
 
-export const generateRecipeWithRetry = async (ingredients: string, maxRetries = 3, delayMs = 500) => {
-  for ( let attempt = 1; attempt <= maxRetries; attempt++ ) {
-    try {
-      const completion = await openai.chat.completions.create({
-        model: 'microsoft/phi-3-medium-128k-instruct',
-        messages: [
-          {
-            role: 'user',
-            content: aiPrompt + ingredients,
-          },
-        ],
-      });
+export const generateRecipeWithRetry = async (
+  ingredients: string,
+  maxRetriesPerModel = 3,
+  delayMs = 500
+) => {
+  for ( const model of AI_MODELS ) {
+    log.info(`Trying model: ${model}`);
+    for ( let attempt = 1; attempt <= maxRetriesPerModel; attempt++ ) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model,
+          messages: [
+            {
+              role: 'user',
+              content: aiPrompt + ingredients,
+            },
+          ],
+        });
 
-      const rawContent = completion.choices?.[0]?.message?.content || '';
-      const recipe = parseAIRecipeJSON(rawContent);
+        const rawContent = completion.choices?.[0]?.message.content || '';
+        const recipe = parseAIRecipeJSON(rawContent);
 
-      if ( recipe ) return recipe;
+        if ( recipe ) {
+          console.log(`Success with model ${model} on attempt ${attempt}`);
+          return recipe;
+        }
 
-      console.warn(`⏳ Attempt ${attempt} failed: invalid recipe. Retrying...`);
-      await new Promise((res) => setTimeout(res, delayMs));
-    } catch ( error ) {
-      console.error(`❌ Attempt ${attempt} failed with error:`, error);
-      if ( attempt === maxRetries ) throw error;
-      await new Promise((res) => setTimeout(res, delayMs));
+        log.warn(`Model ${model} - Attempt ${attempt} failed: invalid JSON.`);
+        await new Promise((res) => setTimeout(res, delayMs));
+      } catch ( error ) {
+        if ( attempt === maxRetriesPerModel ) {
+          log.warn(`${error} Giving up on this model.`);
+        }
+        await new Promise((res) => setTimeout(res, delayMs));
+      }
     }
   }
 
-  throw new Error('❌ All attempts to generate a valid recipe failed.');
+  throw new Error('All models failed to generate a valid recipe.');
 };
