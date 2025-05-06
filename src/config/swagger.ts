@@ -14,7 +14,7 @@ export const setupSwagger = (app: Application) => {
       definition: {
         openapi: '3.0.0',
         info: {
-          title: 'SupeExpress API',
+          title: 'recAIpe API',
           version: process.env.APP_VERSION || '1.0.0',
           description: 'A clean and minimal Node.js + Express + TypeScript + Supabase starter template, ready to deploy on Vercel.',
         },
