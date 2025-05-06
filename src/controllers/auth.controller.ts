@@ -19,23 +19,23 @@ export const register = async (req: Request, res: Response) => {
     if ( signUpError ) return sendError(res, 400, signUpError.message);
     const user = signUpData.user;
     const session = signUpData.session;
+
     if ( !user ) return sendError(res, 400, 'User not found');
 
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .insert([{ id: user.id, name }])
-      .select('name, created_at')
+      .insert([{ id: user.id, name, role: 'user' }])
+      .select('name, role, created_at')
       .single();
 
-    if ( profileError || !profileData ) {
-      return sendError(res, 500, 'Error creating profile');
-    }
+    if ( profileError || !profileData ) return sendError(res, 500, 'Error creating profile');
 
     return sendSuccess(res, 200, 'User registered successfully', {
       user: {
         id: user.id,
         email: user.email,
         name: profileData.name,
+        role: profileData.role,
         created_at: profileData.created_at,
       },
       session: session
@@ -64,34 +64,37 @@ export const register = async (req: Request, res: Response) => {
 export const login = async (req: Request, res: Response) => {
   const { email, password } = req.body;
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password, });
-    if ( error ) return sendError(res, 401, error.message);
-    const user = data.user;
-    const session = data.session;
-    if ( !user || !session ) {
-      return sendError(res, 401, 'Invalid login response');
-    }
-    const { data: profile, error: profileError } = await supabase
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password, });
+    if ( signInError ) return sendError(res, 401, signInError.message);
+    const user = signInData.user;
+    const session = signInData.session;
+
+    if ( !user ) return sendError(res, 401, 'User not found');
+    if ( !session ) return sendError(res, 401, 'Session not found');
+
+    const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .select('name, created_at')
+      .select('name, role, created_at')
       .eq('id', user.id)
       .single();
 
-    if ( profileError || !profile ) {
-      return sendError(res, 500, 'Failed to retrieve user profile');
-    }
+    if ( profileError || !profileData ) return sendError(res, 500, 'Error loading user profile');
+
     return sendSuccess(res, 200, 'Login successful', {
       user: {
         id: user.id,
         email: user.email,
-        name: profile.name,
-        created_at: profile.created_at,
+        name: profileData.name,
+        role: profileData.role,
+        created_at: profileData.created_at,
       },
-      session: {
-        access_token: session.access_token,
-        refresh_token: session.refresh_token,
-        expires_at: session.expires_at,
-      },
+      session: session
+        ? {
+          access_token: session.access_token,
+          refresh_token: session.refresh_token,
+          expires_at: session.expires_at,
+        }
+        : null,
     });
   } catch ( error ) {
     return sendError(res, 500, `Failed to login user: ${error}`);
@@ -107,39 +110,24 @@ export const login = async (req: Request, res: Response) => {
  * @param {Request} req - The request object.
  * @param {Response} res - The response object.
  */
-export const getMe = async (req: Request, res: Response) => {
+export const me = async (req: Request, res: Response) => {
+  const { user } = req;
+  if ( !user ) return sendError(res, 401, 'User not found');
   try {
-    const { user } = req;
-    if ( !user ) return sendError(res, 401, 'User not found');
-
-    const { data: profile, error: profileError } = await supabase
+    const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .select('name, created_at')
+      .select('name, role, created_at')
       .eq('id', user.id)
       .single();
 
-    if ( profileError || !profile ) return sendError(res, 500, 'Failed to load user profile');
-
-    const { data: favorites, error: favError } = await supabase
-      .from('favorites')
-      .select('added_at, recipes(*)')
-      .eq('user_id', user.id);
-
-    if ( favError ) return sendError(res, 500, 'Error retrieving favorites');
-
-    const formattedFavorites = (favorites || []).map(fav => ({
-      ...fav.recipes,
-      added_at: fav.added_at,
-    }));
+    if ( profileError || !profileData ) return sendError(res, 500, 'Error loading user profile');
 
     return sendSuccess(res, 200, 'User retrieved successfully', {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: profile.name,
-        created_at: profile.created_at,
-      },
-      favorites: formattedFavorites,
+      id: user.id,
+      email: user.email,
+      name: profileData.name,
+      role: profileData.role,
+      created_at: profileData.created_at,
     });
   } catch ( error ) {
     return sendError(res, 500, `Failed to retrieve user: ${error}`);
@@ -165,7 +153,7 @@ export const refreshToken = async (req: Request, res: Response) => {
     }
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('name, created_at')
+      .select('name, role, created_at')
       .eq('id', data.user.id)
       .single();
 
@@ -178,6 +166,7 @@ export const refreshToken = async (req: Request, res: Response) => {
         id: data.user.id,
         email: data.user.email,
         name: profile.name,
+        role: profile.role,
         created_at: profile.created_at,
       },
       session: {

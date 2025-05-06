@@ -5,7 +5,7 @@ import {
   getRecipes,
   deleteFromFavorites
 } from '../controllers/recipes.controller';
-import { checkToken } from '../middlewares/checkToken';
+import { checkMinRole } from '../middlewares/checkMinRole';
 import { validateFields } from '../middlewares/fieldsValidation';
 import { ingredientsSchema } from '../validators/recipes.schema';
 
@@ -57,7 +57,7 @@ router.get(
  */
 router.post(
   '/generate',
-  checkToken(),
+  checkMinRole('user'),
   validateFields(ingredientsSchema),
   generateRecipe
 );
@@ -86,7 +86,7 @@ router.post(
  */
 router.post(
   '/favorites/:id',
-  checkToken(),
+  checkMinRole('user'),
   addToFavorites
 );
 
@@ -114,7 +114,7 @@ router.post(
  */
 router.delete(
   '/favorites/:id',
-  checkToken(),
+  checkMinRole('user'),
   deleteFromFavorites
 );
 
