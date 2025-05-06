@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import {
   addToFavorites, generateRecipe,
-  getFavorites,
-  getRecipe,
+  getRecipeById,
   getRecipes,
-  suppFromFavorites
+  deleteFromFavorites
 } from '../controllers/recipes.controller';
 import { checkToken } from '../middlewares/checkToken';
 import { validateFields } from '../middlewares/fieldsValidation';
@@ -12,16 +11,34 @@ import { ingredientsSchema } from '../validators/recipes.schema';
 
 const router = Router();
 
-router.get('/', getRecipes);
-router.post('/generateRecipe', checkToken(), validateFields(ingredientsSchema), generateRecipe);
 router.get(
-  '/favorites',
-  checkToken(),
-  getFavorites
+  '/',
+  getRecipes
 );
-router.post('/favorites/:recipe_id', checkToken(), addToFavorites);
-router.delete('/favorites/:recipe_id', checkToken(), suppFromFavorites);
-router.get('/:id', getRecipe);
+
+router.post(
+  '/generate',
+  checkToken(),
+  validateFields(ingredientsSchema),
+  generateRecipe
+);
+
+router.post(
+  '/favorites/:id',
+  checkToken(),
+  addToFavorites
+);
+
+router.delete(
+  '/favorites/:id',
+  checkToken(),
+  deleteFromFavorites
+);
+
+router.get(
+  '/:id',
+  getRecipeById
+);
 
 
 export default router;
