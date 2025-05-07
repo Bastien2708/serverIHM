@@ -240,8 +240,7 @@ export const generateRecipe = async (req: Request, res: Response) => {
 
     if ( insertError ) return sendError(res, 500, `Database insertion error: ${insertError.message}`);
 
-    const searchQuery = `${recipe.title} ${ingredients}`;
-    const imageUrl = await fetchImageForRecipe(searchQuery);
+    const imageUrl = await fetchImageForRecipe(recipe.imageSearch);
 
     await supabase
       .from('recipes')
@@ -250,7 +249,7 @@ export const generateRecipe = async (req: Request, res: Response) => {
 
     return sendSuccess(res, 201, 'Recipe generated and saved successfully', {
       ...insertedRecipe,
-      image_url: imageUrl,
+      image_url: imageUrl
     });
   } catch ( error ) {
     return sendError(res, 500, 'Server error during recipe generation' + error);
@@ -302,7 +301,7 @@ export const rateRecipe = async (req: Request, res: Response) => {
         user_id: user.id,
         recipe_id: id,
         rating,
-        comment,
+        comment
       })
       .select();
 
@@ -345,5 +344,33 @@ export const getRecipeReviews = async (req: Request, res: Response) => {
     return sendSuccess(res, 200, 'Reviews fetched successfully', reviews);
   } catch ( error ) {
     return sendError(res, 500, `Error: ${error}`);
+  }
+};
+
+export const getFavoritesRecipes = async (req: Request, res: Response) => {
+  console.log('Fetching favorite recipes');
+  const user = req.user;
+  if ( !user ) return sendError(res, 401, 'User not found');
+
+  try {
+    const { data: favorites, error: favoritesError } = await supabase
+      .from('favorites')
+      .select('recipe_id')
+      .eq('user_id', user.id);
+
+    if ( favoritesError ) return sendError(res, 500, `Failed to fetch favorites: ${favoritesError.message}`);
+
+    const recipeIds = favorites.map((favorite) => favorite.recipe_id);
+
+    const { data: recipes, error: recipesError } = await supabase
+      .from('recipes')
+      .select('*')
+      .in('id', recipeIds);
+
+    if ( recipesError ) return sendError(res, 500, `Failed to fetch recipes: ${recipesError.message}`);
+
+    return sendSuccess(res, 200, 'Favorites fetched successfully', recipes);
+  } catch ( error ) {
+    return sendError(res, 500, `Unexpected error: ${error}`);
   }
 };

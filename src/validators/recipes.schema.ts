@@ -16,6 +16,7 @@ export const recipeSchema = z.object({
   carbs: z.number().min(0),
   protein: z.number().min(0),
   fat: z.number().min(0),
+  imageSearch: z.string(),
 });
 
 export const updateRecipeSchema = z.object({
