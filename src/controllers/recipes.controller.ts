@@ -240,8 +240,7 @@ export const generateRecipe = async (req: Request, res: Response) => {
 
     if ( insertError ) return sendError(res, 500, `Database insertion error: ${insertError.message}`);
 
-    const searchQuery = `${recipe.title} ${ingredients}`;
-    const imageUrl = await fetchImageForRecipe(searchQuery);
+    const imageUrl = await fetchImageForRecipe(recipe.imageSearch);
 
     await supabase
       .from('recipes')

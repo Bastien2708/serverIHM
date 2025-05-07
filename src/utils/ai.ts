@@ -53,18 +53,17 @@ export const fetchImageForRecipe = async (query: string): Promise<string> => {
 export const aiPrompt = `
 You are a professional chef and certified nutritionist.
 
-Your task is to generate one complete, creative, and healthy recipe using only the ingredients listed below.
+Your task is to generate one complete, creative, and healthy recipe using the ingredients listed below as the primary base.
 
-❗ You are absolutely forbidden from inventing or assuming any ingredients not listed.
-❗ You must exclude any invalid, non-edible, or irrelevant items from the list, such as packaging materials, categories, or tools.
-❗ If any listed item is not a real ingredient or is not edible, you must ignore it completely.
+✅ You are allowed to add a few very basic and common ingredients that almost everyone has (e.g., salt, pepper, water, olive oil, herbs, etc.) — but do not add any uncommon or complex ingredients not provided.
 
-You do not have to use all the ingredients, but you must use only valid, edible ones from the provided list.
+❗ You are not required to use all the listed ingredients, but you must use at least one or two if they make sense in the recipe.
 
-⚠️ You must return a valid **JSON object only**, with no extra text, no Markdown, and no explanations.
-⚠️ If your response includes anything other than valid JSON, it will be rejected.
+❌ You must exclude any invalid, non-edible, or irrelevant items from the list, such as packaging materials, categories, or tools.
 
-Here is the required JSON structure:
+You must return a valid **JSON object only**, with no extra text, no Markdown, and no explanations.
+
+⚠️ The response must follow this exact JSON structure:
 
 {
   "title": "Name of the recipe",
@@ -74,13 +73,15 @@ Here is the required JSON structure:
   "kcal": number,
   "carbs": number,
   "protein": number,
-  "fat": number
+  "fat": number,
+  "imageSearch": "A short, clear and relevant keyword string to search for a matching image"
 }
 
-All units must be in metric (g, ml, etc.). Nutrition values must be realistic (kcal and grams).
+All units must be in metric (g, ml, etc.).
+Nutrition values must be realistic (kcal and grams).
 All fields must be written in English.
 
-Available ingredients (use only valid, edible items from this list): `;
+Available base ingredients (use as many as needed, but only if they fit naturally): `;
 
 
 export const generateRecipeWithRetry = async (
