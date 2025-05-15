@@ -5,11 +5,94 @@ import { fetchImageForRecipe, generateRecipeWithRetry } from '../utils/ai';
 import { rolePriority, Roles } from '../types/role';
 import { UpdateRecipePayload } from '../types/recipes';
 
-export const getRecipes = async (_: Request, res: Response) => {
+export const getRecipes = async (req: Request, res: Response) => {
   try {
-    const { data, error } = await supabase.from('recipes').select('*');
+    const userId = req.user?.id ?? null;
+
+    const { limit, sort } = req.query;
+
+    const parsedLimit = limit ? parseInt(limit as string, 10) : null;
+    const safeLimit = parsedLimit && parsedLimit > 0 && parsedLimit <= 100 ? parsedLimit : null;
+
+    const sortField = sort ? (sort as string).replace('-', '') : 'created_at';
+    const sortOrder = sort?.toString().startsWith('-') ? 'desc' : 'asc';
+
+    let query = supabase
+      .from('recipes')
+      .select(`
+        id,
+        title,
+        description,
+        ingredients,
+        steps,
+        kcal,
+        carbs,
+        protein,
+        fat,
+        image_url,
+        created_at,
+
+        user_id,
+        user_id ( id, name ),
+
+        recipe_reviews (
+          id,
+          user_id,
+          rating,
+          comment,
+          created_at
+        ),
+
+        favorites!left(user_id)
+      `)
+      .order(sortField, { ascending: sortOrder === 'asc' });
+
+    if ( safeLimit ) query = query.limit(safeLimit);
+
+    const { data, error } = await query;
     if ( error ) return sendError(res, 400, error.message);
-    return sendSuccess(res, 200, 'Recipes retrieved successfully', data);
+
+    const enrichedRecipes = data.map(recipe => {
+      const { recipe_reviews = [], favorites = [], user_id: creatorProfile } = recipe;
+
+      const averageRating =
+        recipe_reviews.length > 0
+          ? recipe_reviews.reduce((sum, r) => sum + r.rating, 0) / recipe_reviews.length
+          : null;
+
+      const isFavorite = userId ? favorites.some(fav => fav.user_id === userId) : false;
+
+      return {
+        id: recipe.id,
+        title: recipe.title,
+        description: recipe.description,
+        ingredients: recipe.ingredients,
+        steps: recipe.steps,
+        kcal: recipe.kcal,
+        carbs: recipe.carbs,
+        protein: recipe.protein,
+        fat: recipe.fat,
+        image_url: recipe.image_url,
+        created_at: recipe.created_at,
+
+        creator: {
+          id: creatorProfile?.id,
+          name: creatorProfile?.name,
+        },
+
+        averageRating,
+        comments: recipe_reviews.map(r => ({
+          user_id: r.user_id,
+          comment: r.comment,
+          rating: r.rating,
+          created_at: r.created_at,
+        })),
+
+        is_favorite: isFavorite,
+      };
+    });
+
+    return sendSuccess(res, 200, 'Recipes retrieved successfully', enrichedRecipes);
   } catch ( error ) {
     return sendError(res, 500, `Failed to retrieve recipes: ${error}`);
   }
@@ -18,14 +101,86 @@ export const getRecipes = async (_: Request, res: Response) => {
 export const getRecipeById = async (req: Request, res: Response) => {
   const { id } = req.params;
   if ( !id ) return sendError(res, 400, 'Missing id in request params');
+
   try {
+    const userId = req.user?.id ?? null;
+
     const { data, error } = await supabase
       .from('recipes')
-      .select('*')
+      .select(`
+        id,
+        title,
+        description,
+        ingredients,
+        steps,
+        kcal,
+        carbs,
+        protein,
+        fat,
+        image_url,
+        created_at,
+
+        user_id,
+        user_id ( id, name ),
+
+        recipe_reviews (
+          id,
+          user_id,
+          rating,
+          comment,
+          created_at
+        ),
+
+        favorites!left(user_id)
+      `)
       .eq('id', id)
       .single();
+
     if ( error ) return sendError(res, 400, error.message);
-    return sendSuccess(res, 200, 'Recipe retrieved successfully', data);
+
+    const {
+      recipe_reviews = [],
+      favorites = [],
+      user_id: creatorProfile,
+    } = data;
+
+    const averageRating =
+      recipe_reviews.length > 0
+        ? recipe_reviews.reduce((sum, r) => sum + r.rating, 0) / recipe_reviews.length
+        : null;
+
+    const isFavorite = userId ? favorites.some(fav => fav.user_id === userId) : false;
+
+    const enrichedRecipe = {
+      id: data.id,
+      title: data.title,
+      description: data.description,
+      ingredients: data.ingredients,
+      steps: data.steps,
+      kcal: data.kcal,
+      carbs: data.carbs,
+      protein: data.protein,
+      fat: data.fat,
+      image_url: data.image_url,
+      created_at: data.created_at,
+
+      creator: {
+        id: creatorProfile?.id,
+        name: creatorProfile?.name,
+      },
+
+      averageRating,
+      comments: recipe_reviews.map(r => ({
+        user_id: r.user_id,
+        comment: r.comment,
+        rating: r.rating,
+        created_at: r.created_at,
+      })),
+
+      is_favorite: isFavorite,
+    };
+
+    return sendSuccess(res, 200, 'Recipe retrieved successfully', enrichedRecipe);
   } catch ( error ) {
     return sendError(res, 500, `Failed to retrieve recipe: ${error}`);
   }

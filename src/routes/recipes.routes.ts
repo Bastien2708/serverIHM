@@ -13,6 +13,7 @@ import {
 import { checkMinRole } from '../middlewares/checkMinRole';
 import { validateFields } from '../middlewares/fieldsValidation';
 import { ingredientsSchema, recipeReviewSchema, updateRecipeSchema } from '../validators/recipes.schema';
+import { optionalAuth } from '../middlewares/optionalAuth';
 
 const router = Router();
 
@@ -22,10 +23,10 @@ router.delete('/:id/favorites', checkMinRole('user'), deleteFromFavorites);
 router.get('/:id/reviews', checkMinRole('user'), getRecipeReviews);
 router.post('/:id/rate', checkMinRole('user'), validateFields(recipeReviewSchema), rateRecipe);
 
-router.get('/', getRecipes);
+router.get('/', optionalAuth, getRecipes);
 router.post('/generate', checkMinRole('user'), validateFields(ingredientsSchema), generateRecipe);
 
-router.get('/:id', getRecipeById);
+router.get('/:id', optionalAuth, getRecipeById);
 router.patch('/:id', checkMinRole('user'), validateFields(updateRecipeSchema), updateRecipeById);
 router.delete('/:id', checkMinRole('user'), deleteRecipeById);
 
