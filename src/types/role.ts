@@ -15,6 +15,7 @@ export const rolePriority: Record<string, number> = {
 };
 
 export interface AuthenticatedUser extends SupabaseUser {
+  id: string;
   name: string;
   role: 'user' | 'admin' | 'super_admin';
 }
