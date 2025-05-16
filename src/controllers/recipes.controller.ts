@@ -37,10 +37,11 @@ export const getRecipes = async (req: Request, res: Response) => {
 
         recipe_reviews (
           id,
-          user_id,
+          user_id ( id, name ),
           rating,
           comment,
-          created_at
+          created_at,
+          updated_at
         ),
 
         favorites!left(user_id)
@@ -80,13 +81,22 @@ export const getRecipes = async (req: Request, res: Response) => {
           name: creatorProfile?.name,
         },
 
-        averageRating,
-        comments: recipe_reviews.map(r => ({
-          user_id: r.user_id,
-          comment: r.comment,
-          rating: r.rating,
-          created_at: r.created_at,
-        })),
+        average_rating: averageRating,
+        reviews: recipe_reviews.map(r => {
+          const authorData = Array.isArray(r.user_id) ? r.user_id[0] : r.user_id;
+
+          return {
+            author: {
+              id: authorData?.id ?? '',
+              name: authorData?.name ?? '',
+            },
+            id: r.id,
+            recipe_id: recipe.id,
+            comment: r.comment,
+            rating: r.rating,
+            updated_at: r.updated_at,
+          };
+        }),
 
         is_favorite: isFavorite,
       };
@@ -125,10 +135,11 @@ export const getRecipeById = async (req: Request, res: Response) => {
 
         recipe_reviews (
           id,
-          user_id,
+          user_id ( id, name ),
           rating,
           comment,
-          created_at
+          created_at,
+          updated_at
         ),
 
         favorites!left(user_id)
@@ -170,12 +181,21 @@ export const getRecipeById = async (req: Request, res: Response) => {
       },
 
       average_rating: averageRating,
-      comments: recipe_reviews.map(r => ({
-        user_id: r.user_id,
-        comment: r.comment,
-        rating: r.rating,
-        created_at: r.created_at,
-      })),
+      reviews: recipe_reviews.map(r => {
+        const authorData = Array.isArray(r.user_id) ? r.user_id[0] : r.user_id;
+
+        return {
+          author: {
+            id: authorData?.id ?? '',
+            name: authorData?.name ?? '',
+          },
+          id: r.id,
+          recipe_id: data.id,
+          comment: r.comment,
+          rating: r.rating,
+          updated_at: r.updated_at,
+        };
+      }),
 
       is_favorite: isFavorite,
     };
