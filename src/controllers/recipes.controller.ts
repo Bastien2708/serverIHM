@@ -169,7 +169,7 @@ export const getRecipeById = async (req: Request, res: Response) => {
         name: creatorProfile?.name,
       },
 
-      averageRating,
+      average_rating: averageRating,
       comments: recipe_reviews.map(r => ({
         user_id: r.user_id,
         comment: r.comment,
