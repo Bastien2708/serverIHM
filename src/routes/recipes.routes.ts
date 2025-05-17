@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  addToFavorites, generateRecipe,
+  addToFavorites, generateRecipes,
   getRecipeById,
   getRecipes,
   deleteFromFavorites,
@@ -8,12 +8,13 @@ import {
   deleteRecipeById,
   rateRecipe,
   getRecipeReviews,
-  getFavoritesRecipes
+  getFavoritesRecipes, saveGeneratedRecipe
 } from '../controllers/recipes.controller';
 import { checkMinRole } from '../middlewares/checkMinRole';
 import { validateFields } from '../middlewares/fieldsValidation';
-import { ingredientsSchema, recipeReviewSchema, updateRecipeSchema } from '../validators/recipes.schema';
+import { generateSchema, recipeReviewSchema, recipeSchema, updateRecipeSchema } from '../validators/recipes.schema';
 import { optionalAuth } from '../middlewares/optionalAuth';
+import { verifyRecipeToken } from '../middlewares/verifyRecipeToken';
 
 const router = Router();
 
@@ -24,7 +25,8 @@ router.get('/:id/reviews', checkMinRole('user'), getRecipeReviews);
 router.post('/:id/rate', checkMinRole('user'), validateFields(recipeReviewSchema), rateRecipe);
 
 router.get('/', optionalAuth, getRecipes);
-router.post('/generate', checkMinRole('user'), validateFields(ingredientsSchema), generateRecipe);
+router.post('/generate', checkMinRole('user'), validateFields(generateSchema), generateRecipes);
+router.post('/save', checkMinRole('user'), validateFields(recipeSchema), verifyRecipeToken, saveGeneratedRecipe);
 
 router.get('/:id', optionalAuth, getRecipeById);
 router.patch('/:id', checkMinRole('user'), validateFields(updateRecipeSchema), updateRecipeById);
