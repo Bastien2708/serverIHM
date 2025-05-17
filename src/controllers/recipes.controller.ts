@@ -4,6 +4,7 @@ import { sendError, sendSuccess } from '../middlewares/httpResponses';
 import { fetchImageForRecipe, generateRecipeWithRetry } from '../utils/ai';
 import { rolePriority, Roles } from '../types/role';
 import { UpdateRecipePayload } from '../types/recipes';
+import { signRecipe } from '../middlewares/verifyRecipeToken';
 
 export const getRecipes = async (req: Request, res: Response) => {
   try {
@@ -115,94 +116,11 @@ export const getRecipeById = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.id ?? null;
 
-    const { data, error } = await supabase
-      .from('recipes')
-      .select(`
-        id,
-        title,
-        description,
-        ingredients,
-        steps,
-        kcal,
-        carbs,
-        protein,
-        fat,
-        image_url,
-        created_at,
+    const recipe = await getEnrichedRecipeById(id, userId);
+    return sendSuccess(res, 200, 'Recipe retrieved successfully', recipe);
 
-        user_id,
-        user_id ( id, name ),
-
-        recipe_reviews (
-          id,
-          user_id ( id, name ),
-          rating,
-          comment,
-          created_at,
-          updated_at
-        ),
-
-        favorites!left(user_id)
-      `)
-      .eq('id', id)
-      .single();
-
-    if ( error ) return sendError(res, 400, error.message);
-
-    const {
-      recipe_reviews = [],
-      favorites = [],
-      user_id: creatorProfile,
-    } = data;
-
-    const averageRating =
-      recipe_reviews.length > 0
-        ? recipe_reviews.reduce((sum, r) => sum + r.rating, 0) / recipe_reviews.length
-        : null;
-
-    const isFavorite = userId ? favorites.some(fav => fav.user_id === userId) : false;
-
-    const enrichedRecipe = {
-      id: data.id,
-      title: data.title,
-      description: data.description,
-      ingredients: data.ingredients,
-      steps: data.steps,
-      kcal: data.kcal,
-      carbs: data.carbs,
-      protein: data.protein,
-      fat: data.fat,
-      image_url: data.image_url,
-      created_at: data.created_at,
-
-      creator: {
-        id: creatorProfile?.id,
-        name: creatorProfile?.name,
-      },
-
-      average_rating: averageRating,
-      reviews: recipe_reviews.map(r => {
-        const authorData = Array.isArray(r.user_id) ? r.user_id[0] : r.user_id;
-
-        return {
-          author: {
-            id: authorData?.id ?? '',
-            name: authorData?.name ?? '',
-          },
-          id: r.id,
-          recipe_id: data.id,
-          comment: r.comment,
-          rating: r.rating,
-          updated_at: r.updated_at,
-        };
-      }),
-
-      is_favorite: isFavorite,
-    };
-
-    return sendSuccess(res, 200, 'Recipe retrieved successfully', enrichedRecipe);
   } catch ( error ) {
-    return sendError(res, 500, `Failed to retrieve recipe: ${error}`);
+    return sendError(res, 500, `Failed to retrieve recipe: ${error instanceof Error ? error.message : error}`);
   }
 };
 
@@ -388,15 +306,46 @@ export const deleteFromFavorites = async (req: Request, res: Response) => {
   }
 };
 
-export const generateRecipe = async (req: Request, res: Response) => {
-  const { ingredients } = req.body;
+export const generateRecipes = async (req: Request, res: Response) => {
+  const { ingredients, mealType, dietType } = req.body;
 
+  try {
+    const sanitizedIngredients = ingredients.map((ingredient: string) =>
+      ingredient
+        .replace(/ignore.*?$/i, '')
+        .replace(/[^a-zA-Z0-9, \-']/g, '')
+        .trim()
+    );
+    const recipes = await Promise.all(
+      Array.from({ length: 4 }, () => generateRecipeWithRetry(sanitizedIngredients, mealType, dietType))
+    );
+
+    const recipesWithImagesAndTokens = await Promise.all(
+      recipes.map(async (recipe) => {
+        const image_url = await fetchImageForRecipe(recipe.imageSearch);
+
+        const fullRecipe = { ...recipe, imageSearch: recipe.imageSearch, image_url };
+        const token = signRecipe(fullRecipe);
+
+        return {
+          recipe: fullRecipe,
+          token,
+        };
+      })
+    );
+
+    return sendSuccess(res, 200, 'Recipes generated successfully', recipesWithImagesAndTokens);
+  } catch ( error ) {
+    return sendError(res, 500, 'Server error during recipe generation: ' + error);
+  }
+};
+
+export const saveGeneratedRecipe = async (req: Request, res: Response) => {
+  const recipe = req.body;
   const { user } = req;
   if ( !user ) return sendError(res, 401, 'User not found');
 
   try {
-    const recipe = await generateRecipeWithRetry(ingredients);
-
     const { data: insertedRecipe, error: insertError } = await supabase
       .from('recipes')
       .insert({
@@ -408,26 +357,21 @@ export const generateRecipe = async (req: Request, res: Response) => {
         carbs: recipe.carbs,
         protein: recipe.protein,
         fat: recipe.fat,
-        user_id: user.id
+        image_url: recipe.image_url,
+        user_id: user.id,
       })
       .select()
       .single();
 
-    if ( insertError ) return sendError(res, 500, `Database insertion error: ${insertError.message}`);
+    if ( insertError ) {
+      return sendError(res, 500, 'Database insertion error: ' + insertError.message);
+    }
 
-    const imageUrl = await fetchImageForRecipe(recipe.imageSearch);
+    const recipeAdded = await getEnrichedRecipeById(insertedRecipe.id, user.id);
 
-    await supabase
-      .from('recipes')
-      .update({ image_url: imageUrl })
-      .eq('id', insertedRecipe.id);
-
-    return sendSuccess(res, 201, 'Recipe generated and saved successfully', {
-      ...insertedRecipe,
-      image_url: imageUrl
-    });
+    return sendSuccess(res, 201, 'Recipe saved successfully', recipeAdded);
   } catch ( error ) {
-    return sendError(res, 500, 'Server error during recipe generation' + error);
+    return sendError(res, 500, 'Server error during recipe save: ' + error);
   }
 };
 
@@ -436,15 +380,14 @@ export const rateRecipe = async (req: Request, res: Response) => {
   if ( !id ) return sendError(res, 400, 'Missing recipe ID in request params');
 
   const { rating, comment } = req.body;
-
   const { user } = req;
   if ( !user ) return sendError(res, 401, 'User not found');
 
   const { data: recipe, error: recipeError } = await supabase
     .from('recipes')
-    .select('*')
+    .select('id')
     .eq('id', id)
-    .single();
+    .maybeSingle();
 
   if ( recipeError || !recipe ) return sendError(res, 404, 'Recipe not found');
 
@@ -455,7 +398,9 @@ export const rateRecipe = async (req: Request, res: Response) => {
       .eq('user_id', user.id)
       .eq('recipe_id', id)
       .maybeSingle();
-    if ( existingReviewError ) return sendError(res, 500, `Failed to check existing review: ${existingReviewError.message}`);
+
+    if ( existingReviewError )
+      return sendError(res, 500, `Failed to check existing review: ${existingReviewError.message}`);
 
     if ( existingReview ) {
       const { error: updateError } = await supabase
@@ -466,23 +411,24 @@ export const rateRecipe = async (req: Request, res: Response) => {
           updated_at: new Date()
         })
         .eq('id', existingReview.id);
+
       if ( updateError ) return sendError(res, 500, `Failed to update review: ${updateError.message}`);
-      return sendSuccess(res, 200, 'Review updated successfully', recipe);
+    } else {
+      const { error } = await supabase
+        .from('recipe_reviews')
+        .insert({
+          user_id: user.id,
+          recipe_id: id,
+          rating,
+          comment
+        });
+
+      if ( error ) return sendError(res, 500, `Failed to add review: ${error.message}`);
     }
 
-    const { error } = await supabase
-      .from('recipe_reviews')
-      .insert({
-        user_id: user.id,
-        recipe_id: id,
-        rating,
-        comment
-      })
-      .select();
+    const enrichedRecipe = await getEnrichedRecipeById(id, user.id);
+    return sendSuccess(res, 200, 'Review saved successfully', enrichedRecipe);
 
-    if ( error ) return sendError(res, 500, `Failed to add review: ${error.message}`);
-
-    return sendSuccess(res, 201, 'Review added successfully', recipe);
   } catch ( error ) {
     return sendError(res, 500, `Error: ${error}`);
   }
@@ -549,3 +495,90 @@ export const getFavoritesRecipes = async (req: Request, res: Response) => {
     return sendError(res, 500, `Unexpected error: ${error}`);
   }
 };
+
+
+export async function getEnrichedRecipeById(recipeId: string, userId?: string | null) {
+  const { data, error } = await supabase
+    .from('recipes')
+    .select(`
+      id,
+      title,
+      description,
+      ingredients,
+      steps,
+      kcal,
+      carbs,
+      protein,
+      fat,
+      image_url,
+      created_at,
+
+      user_id,
+      user_id ( id, name ),
+
+      recipe_reviews (
+        id,
+        user_id ( id, name ),
+        rating,
+        comment,
+        created_at,
+        updated_at
+      ),
+
+      favorites!left(user_id)
+    `)
+    .eq('id', recipeId)
+    .single();
+
+  if ( error || !data ) throw new Error(error?.message || 'Recipe not found');
+
+  const {
+    recipe_reviews = [],
+    favorites = [],
+    user_id: creatorProfile,
+  } = data;
+
+  const averageRating =
+    recipe_reviews.length > 0
+      ? recipe_reviews.reduce((sum, r) => sum + r.rating, 0) / recipe_reviews.length
+      : null;
+
+  const isFavorite = userId ? favorites.some(fav => fav.user_id === userId) : false;
+
+  return {
+    id: data.id,
+    title: data.title,
+    description: data.description,
+    ingredients: data.ingredients,
+    steps: data.steps,
+    kcal: data.kcal,
+    carbs: data.carbs,
+    protein: data.protein,
+    fat: data.fat,
+    image_url: data.image_url,
+    created_at: data.created_at,
+
+    creator: {
+      id: creatorProfile?.id,
+      name: creatorProfile?.name,
+    },
+
+    average_rating: averageRating,
+    reviews: recipe_reviews.map(r => {
+      const authorData = Array.isArray(r.user_id) ? r.user_id[0] : r.user_id;
+      return {
+        author: {
+          id: authorData?.id ?? '',
+          name: authorData?.name ?? '',
+        },
+        id: r.id,
+        recipe_id: data.id,
+        comment: r.comment,
+        rating: r.rating,
+        updated_at: r.updated_at,
+      };
+    }),
+
+    is_favorite: isFavorite,
+  };
+}

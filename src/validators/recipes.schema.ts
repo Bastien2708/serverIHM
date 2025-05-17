@@ -1,10 +1,13 @@
 import { z } from 'zod';
 
-const ingredients = z.string({ required_error: 'ingredients is required.' })
-  .nonempty('ingredients cannot be empty.');
+const ingredientsSchema = z.array(z.string().min(1, 'Ingredient cannot be empty.')).nonempty('At least one ingredient is required.');
+const mealTypeSchema = z.enum(['breakfast', 'lunch', 'dinner', 'snack']).optional();
+const dietTypeSchema = z.enum(['high protein', 'low carb', 'bulk', 'cut', 'vegan', 'vegetarian', 'gluten free']).optional();
 
-export const ingredientsSchema = z.object({
-  ingredients: ingredients,
+export const generateSchema = z.object({
+  ingredients: ingredientsSchema,
+  mealType: mealTypeSchema,
+  dietType: dietTypeSchema,
 });
 
 export const recipeSchema = z.object({
