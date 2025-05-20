@@ -22,3 +22,8 @@ export type RecipeType = {
   imageSearch: string;
   image_url: string;
 };
+
+export type ParsedRecipes =
+  | { status: 'ok'; data: RecipeType[] }
+  | { status: 'ai_error'; message: string }
+  | { status: 'invalid_format'; raw: string };
