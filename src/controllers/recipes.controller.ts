@@ -308,29 +308,33 @@ export const deleteFromFavorites = async (req: Request, res: Response) => {
 
 export const generateRecipes = async (req: Request, res: Response) => {
   const { ingredients, mealType, dietType } = req.body;
-
   try {
-    const sanitizedIngredients = ingredients.map((ingredient: string) =>
+    const sanitizeIngredient = (ingredient: string) =>
       ingredient
         .replace(/ignore.*?$/i, '')
-        .replace(/[^a-zA-Z0-9, \-']/g, '')
-        .trim()
-    );
-    const recipes = await Promise.all(
-      Array.from({ length: 4 }, () => generateRecipeWithRetry(sanitizedIngredients, mealType, dietType))
-    );
+        .replace(/[^a-zA-Z0-9À-ÿ, \-']/g, '')
+        .trim();
+    const sanitizedIngredients = ingredients.map(sanitizeIngredient).filter(Boolean);
+    if ( sanitizedIngredients.length === 0 )
+      return sendError(res, 400, 'No valid ingredients provided');
+
+    const result = await generateRecipeWithRetry(sanitizedIngredients, mealType, dietType);
+
+    if ( result.status === 'ai_error' ) {
+      return sendError(res, 400, result.message);
+    }
+
+    if ( result.status === 'invalid_format' ) {
+      return sendError(res, 500, 'Invalid response from AI');
+    }
+    const recipes = result.data;
 
     const recipesWithImagesAndTokens = await Promise.all(
       recipes.map(async (recipe) => {
         const image_url = await fetchImageForRecipe(recipe.imageSearch);
-
-        const fullRecipe = { ...recipe, imageSearch: recipe.imageSearch, image_url };
+        const fullRecipe = { ...recipe, image_url };
         const token = signRecipe(fullRecipe);
-
-        return {
-          recipe: fullRecipe,
-          token,
-        };
+        return { recipe: fullRecipe, token };
       })
     );
 
