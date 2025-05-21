@@ -407,13 +407,14 @@ export const rateRecipe = async (req: Request, res: Response) => {
       return sendError(res, 500, `Failed to check existing review: ${existingReviewError.message}`);
 
     if ( existingReview ) {
+      // Construction dynamique de l'objet d'update
+      const updatePayload: any = { rating, updated_at: new Date() };
+      if ( 'comment' in req.body ) {
+        updatePayload.comment = comment;
+      }
       const { error: updateError } = await supabase
         .from('recipe_reviews')
-        .update({
-          rating,
-          comment: comment !== undefined ? comment : existingReview.comment,
-          updated_at: new Date()
-        })
+        .update(updatePayload)
         .eq('id', existingReview.id);
 
       if ( updateError ) return sendError(res, 500, `Failed to update review: ${updateError.message}`);
@@ -424,7 +425,7 @@ export const rateRecipe = async (req: Request, res: Response) => {
           user_id: user.id,
           recipe_id: id,
           rating,
-          comment
+          comment: 'comment' in req.body ? comment : null
         });
 
       if ( error ) return sendError(res, 500, `Failed to add review: ${error.message}`);

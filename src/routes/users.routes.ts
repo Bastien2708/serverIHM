@@ -7,7 +7,7 @@ import { updateUserSchema } from '../validators/users.schema';
 const router = Router();
 
 router.get('/', checkMinRole('admin'), getUsers);
-router.get('/:id', getUserById);
+router.get('/:id', checkMinRole('user'), getUserById);
 router.patch('/:id', checkMinRole('user'), validateFields(updateUserSchema), updateUserById);
 router.delete('/:id', checkMinRole('admin'), deleteUserById);
 

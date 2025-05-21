@@ -42,7 +42,7 @@ const ratingSchema = z.number({ required_error: 'Rating cannot be empty' })
   .min(1, 'Rating must be between 1 and 5.')
   .max(5, 'Rating must be between 1 and 5.');
 
-const commentSchema = z.string().min(1, 'Review cannot be empty.').optional();
+const commentSchema = z.string().optional();
 
 export const recipeReviewSchema = z.object({
   rating: ratingSchema,

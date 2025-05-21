@@ -37,29 +37,126 @@ export const getUsers = async (_: Request, res: Response) => {
 
 export const getUserById = async (req: Request, res: Response) => {
   const { id } = req.params;
-  if ( !id ) return sendError(res, 400, 'Missing id in request params');
+  if (!id) return sendError(res, 400, 'Missing id in request params');
+
+  const requester = req.user;
+  if (!requester) return sendError(res, 401, 'Unauthorized');
+
   try {
+    // Récupération utilisateur auth (email, etc.)
     const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(id);
-    if ( userError || !userData?.user ) return sendError(res, 404, userError?.message || 'User not found');
+    if (userError || !userData?.user) {
+      return sendError(res, 404, userError?.message || 'User not found');
+    }
 
     const user = userData.user;
 
+    // Récupération du profil dans la table 'profiles'
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('name, role, created_at')
       .eq('id', id)
       .single();
 
-    if ( profileError || !profile ) return sendError(res, 500, 'User found, but failed to load profile');
+    if (profileError || !profile) {
+      return sendError(res, 500, 'User found, but failed to load profile');
+    }
 
+    // Récupération des recettes de l'utilisateur
+    const { data: recipes, error: recipesError } = await supabase
+      .from('recipes')
+      .select(`
+        id,
+        title,
+        description,
+        ingredients,
+        steps,
+        kcal,
+        carbs,
+        protein,
+        fat,
+        image_url,
+        created_at,
+        recipe_reviews (
+          id,
+          user_id ( id, name ),
+          rating,
+          comment,
+          updated_at
+        )
+      `)
+      .eq('user_id', id);
+
+    if (recipesError) {
+      return sendError(res, 500, 'Failed to load user recipes: ' + recipesError.message);
+    }
+
+    // Récupération des favoris du requester
+    const { data: favorites, error: favError } = await supabase
+      .from('favorites')
+      .select('recipe_id')
+      .eq('user_id', requester.id);
+
+    if (favError) {
+      return sendError(res, 500, 'Failed to load user favorites: ' + favError.message);
+    }
+
+    const favoriteIds = new Set(favorites.map(f => f.recipe_id));
+
+    // Formatage des recettes
+    const formattedRecipes = (recipes || []).map(recipe => {
+      const recipe_reviews = recipe.recipe_reviews || [];
+
+      const average_rating = recipe_reviews.length > 0
+        ? recipe_reviews.reduce((sum, r) => sum + r.rating, 0) / recipe_reviews.length
+        : null;
+
+      return {
+        id: recipe.id,
+        title: recipe.title,
+        description: recipe.description,
+        ingredients: recipe.ingredients,
+        steps: recipe.steps,
+        kcal: recipe.kcal,
+        carbs: recipe.carbs,
+        protein: recipe.protein,
+        fat: recipe.fat,
+        image_url: recipe.image_url,
+        created_at: recipe.created_at,
+        average_rating,
+        creator: {
+          id: user.id,
+          name: profile.name,
+        },
+        reviews: recipe_reviews.map(r => {
+          const authorData = Array.isArray(r.user_id) ? r.user_id[0] : r.user_id;
+          return {
+            author: {
+              id: authorData?.id ?? '',
+              name: authorData?.name ?? '',
+            },
+            id: r.id,
+            recipe_id: recipe.id,
+            comment: r.comment,
+            rating: r.rating,
+            updated_at: r.updated_at,
+          };
+        }),
+        is_favorite: favoriteIds.has(recipe.id),
+      };
+    });
+
+    // Envoi de la réponse finale
     return sendSuccess(res, 200, 'User fetched successfully', {
       id: user.id,
       email: user.email,
       name: profile.name,
       role: profile.role,
       created_at: profile.created_at,
+      generated_recipes: formattedRecipes,
     });
-  } catch ( error ) {
+
+  } catch (error) {
     return sendError(res, 500, `Failed to retrieve user: ${error}`);
   }
 };
@@ -87,12 +184,6 @@ export const updateUserById = async (req: Request, res: Response) => {
   const targetPriority = rolePriority[targetRole];
   const requesterPriority = rolePriority[requester.role];
 
-  // Interdire les modifications d’utilisateurs de même ou plus haut niveau (sauf sur soi-même)
-  if ( !isSelf && requesterPriority <= targetPriority ) {
-    return sendError(res, 403, 'You can only update users with a lower role than yours');
-  }
-
-  // Interdire l’assignation de rôle de niveau égal ou supérieur
   if ( role && requesterPriority <= rolePriority[role] ) {
     return sendError(res, 403, 'You cannot assign a role equal to or higher than yours');
   }
