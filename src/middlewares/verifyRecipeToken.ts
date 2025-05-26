@@ -4,7 +4,8 @@ import { RecipeType } from '../types/recipes';
 import { sendError } from './httpResponses';
 
 export const signRecipe = (recipe: RecipeType): string => {
-  const secret = process.env.RECIPE_TOKEN || '';
+  const secret = 'IlFautAjouterUnSecretDansLeFichierEnv';
+  //const secret = process.env.RECIPE_TOKEN || '';
   const payload = JSON.stringify(recipe);
   return crypto.createHmac('sha256', secret).update(payload).digest('hex');
 };
