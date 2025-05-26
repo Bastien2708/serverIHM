@@ -350,6 +350,23 @@ export const saveGeneratedRecipe = async (req: Request, res: Response) => {
   if ( !user ) return sendError(res, 401, 'User not found');
 
   try {
+    const token = signRecipe(recipe);
+
+    const { data: existingRecipes, error: selectError } = await supabase
+      .from('recipes')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('hash', token)
+      .maybeSingle();
+
+    if (selectError) {
+      return sendError(res, 500, 'Database lookup error: ' + selectError.message);
+    }
+
+    if (existingRecipes) {
+      return sendError(res, 409, 'Recipe already exists');
+    }
+
     const { data: insertedRecipe, error: insertError } = await supabase
       .from('recipes')
       .insert({
@@ -363,16 +380,16 @@ export const saveGeneratedRecipe = async (req: Request, res: Response) => {
         fat: recipe.fat,
         image_url: recipe.image_url,
         user_id: user.id,
+        hash: token,
       })
       .select()
       .single();
 
-    if ( insertError ) {
+    if (insertError) {
       return sendError(res, 500, 'Database insertion error: ' + insertError.message);
     }
 
     const recipeAdded = await getEnrichedRecipeById(insertedRecipe.id, user.id);
-
     return sendSuccess(res, 201, 'Recipe saved successfully', recipeAdded);
   } catch ( error ) {
     return sendError(res, 500, 'Server error during recipe save: ' + error);
